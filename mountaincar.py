@@ -22,7 +22,7 @@ class Agent(BaseAgent):
         self._model_target = self._build_model()
         self._memory = deque(maxlen=20000)
         self._learning_batch_size = 25
-        self._learning_steps_delay = 2000
+        self._learning_steps_delay = 200
 
     def _update_target_network(self):
         self._model_target.set_weights(self._model.get_weights())
@@ -49,9 +49,9 @@ class Agent(BaseAgent):
 
     def learn(self, observation, action, next_observation, reward, done, info):
         self._memory.append((
-            self._transform_observation(observation), 
+            observation, 
             action, 
-            self._transform_observation(next_observation), 
+            next_observation, 
             reward, 
             done, 
             info
@@ -61,14 +61,20 @@ class Agent(BaseAgent):
             self._decay_epsilon()
 
     def _learn_from_memory(self):
-        batch = sample(self._memory, self._learning_batch_size)
-        for observation, action, next_observation, reward, done, info in batch:
-            target = reward
-            if not done:
-                target = (reward + self._gamma * np.amax(self._model.predict(next_observation)[0]))
-            target_f = self._model.predict(observation)
-            target_f[0][action] = target
-            self._model.fit(observation, target_f, epochs=1, verbose=0)
+        batch = np.array(sample(self._memory, self._learning_batch_size))
+        observations = np.array(batch[:,0].tolist())
+        actions = np.array(batch[:,1].tolist())
+        observations_next = np.array(batch[:,2].tolist())
+        rewards = np.array(batch[:,3].tolist())
+        dones = np.array(batch[:,4].tolist())
+        Qvalues = self._model.predict(observations)
+        Qprimes = self._model.predict(observations_next)
+        for i in range(self._learning_batch_size):
+            if dones[i]:
+                Qvalues[i, actions[i]] = rewards[i]
+            else:
+                Qvalues[i, actions[i]] = rewards[i] + self._gamma * np.amax(Qprimes[i])
+        self._model.fit(observations, Qvalues, epochs=1, verbose=0)
 
     def _decay_epsilon(self):
         self._epsilon = max(self._epsilon_min, self._epsilon * self._epsilon_decay)
