@@ -14,15 +14,16 @@ class Agent(BaseAgent):
         super().__init__(env)
         self._state_size = env.observation_space.shape[0]
         self._action_size = env.action_space.n
-        self._gamma = 0.95    # discount rate
+        self._gamma = 0.99    # discount rate
         self._epsilon = 1.0  # exploration rate
         self._epsilon_min = 0.01
         self._epsilon_decay = 0.99996
         self._model = self._build_model()
         self._model_target = self._build_model()
         self._memory = deque(maxlen=20000)
-        self._learning_batch_size = 25
-        self._learning_steps_delay = 200
+        self._learning_batch_size = 32
+        self._learning_steps_delay = 2000
+        self._total_learns = 0
 
     def _update_target_network(self):
         self._model_target.set_weights(self._model.get_weights())
@@ -68,13 +69,16 @@ class Agent(BaseAgent):
         rewards = np.array(batch[:,3].tolist())
         dones = np.array(batch[:,4].tolist())
         Qvalues = self._model.predict(observations)
-        Qprimes = self._model.predict(observations_next)
+        Qprimes = self._model_target.predict(observations_next)
         for i in range(self._learning_batch_size):
             if dones[i]:
                 Qvalues[i, actions[i]] = rewards[i]
             else:
                 Qvalues[i, actions[i]] = rewards[i] + self._gamma * np.amax(Qprimes[i])
         self._model.fit(observations, Qvalues, epochs=1, verbose=0)
+        self._total_learns += 1
+        if (self._total_learns % 1000) == 0:
+            self._update_target_network()
 
     def _decay_epsilon(self):
         self._epsilon = max(self._epsilon_min, self._epsilon * self._epsilon_decay)
